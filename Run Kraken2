@@ -1,0 +1,46 @@
+#!/bin/bash
+#echo params
+
+#load kraken2 env, database, samples.txt file
+source /.../kraken_source/conda.sh 
+conda activate kraken2 
+K2DB=/.../databases/standard
+samples_file=samples.txt
+
+sample=`tail -n+${SLURM_ARRAY_TASK_ID} ${samples_file} | head -n 1`
+echo "sample: (${sample})"
+
+#set confidence
+confidence=0.05
+
+std_output=kraken_results_confidence_${confidence}
+mpa_output=kraken_results_mpa_confidence_${confidence}
+mkdir -p ${std_output}
+mkdir -p ${mpa_output}
+
+#generate abundance file
+kraken2 \
+    --threads 1 \
+    --db ${K2DB} \
+    --confidence ${confidence} \
+    --output ${std_output}/${sample}.out \
+    --report ${std_output}/${sample}.report.txt \
+    --paired \
+    --use-names \
+    --gzip-compressed \
+    x_fastp_trimmed/${sample}_R1_001_fastp.fastq.gz \
+    x_fastp_trimmed/${sample}_R2_001_fastp.fastq.gz
+
+#generate counts file
+kraken2 \
+    --threads 1 \
+    --db ${K2DB} \
+    --confidence ${confidence} \
+    --output ${mpa_output}/${sample}.out \
+    --report ${mpa_output}/${sample}.report.txt \
+    --use-mpa-style \
+    --paired \
+    --use-names \
+    --gzip-compressed \
+    x_fastp_trimmed/${sample}_R1_001_fastp.fastq.gz \
+    x_fastp_trimmed/${sample}_R2_001_fastp.fastq.gz

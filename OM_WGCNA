@@ -1,0 +1,32 @@
+#WGCNA
+
+#Install and load the packages
+install.packages("WGCNA")
+
+library(WGCNA)
+
+#Data preparation - OTU abundance data should be appropriately prepared for analysis, i.e. filtered and transformed.
+#Read in dataframes
+#rownames = sample name, colnames = OTU names
+df1 <- read.csv(...)
+df2 <- read.csv(...)
+
+df1[1:5,1:5] 
+df2[1:5,1:5] 
+
+#check dfs for missingness
+#If excessive missingness....
+gsg = goodSamplesGenes(datExpr0[-1], verbose = 3);
+gsg$allOK
+
+#Cluster samples to check for outlier samples
+#If sample removal necessary...
+
+#Read in clinical data
+
+
+
+
+
+
+

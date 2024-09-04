@@ -1,0 +1,10 @@
+#LEfSe analysis on OM-COG
+
+module load Anaconda3/2023.07-2
+#conda install bioconda::lefse
+source activate bio_lefse
+
+lefse_format_input.py lefse_input_290824.txt formatted_input.in -c 1 -s 2 -o 1000000
+lefse_run.py formatted_input.in lefse_matrix.res
+lefse_plot_res.py lefse_matrix.res lefse_matrix.res.svg --format svg
+lefse_plot_cladogram.py lefse_matrix.res lefse_cladogram.svg --format svg

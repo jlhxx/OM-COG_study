@@ -1,32 +1,346 @@
-#WGCNA
+#WGCNA to build a concensus correlation network of OTUs
+#Langfelder, P. and Horvath, S., 2008. WGCNA: an R package for weighted correlation network analysis. BMC bioinformatics, 9(1), p.559.
 
+#data preparation - data should be appropriately prepared for analysis, i.e. filtered and transformed.
 #Install and load the packages
 install.packages("WGCNA")
+library("WGCNA")
 
-library(WGCNA)
-
-#Data preparation - OTU abundance data should be appropriately prepared for analysis, i.e. filtered and transformed.
-#Read in dataframes
+#read dataframes
 #rownames = sample name, colnames = OTU names
-df1 <- read.csv(...)
-df2 <- read.csv(...)
+df1<-read.table("df1.txt",header=T,na.strings="NA")
+df2<-read.table("df2.txt",header=T,na.strings="NA")
 
 df1[1:5,1:5] 
 df2[1:5,1:5] 
 
-#check dfs for missingness
-#If excessive missingness....
-gsg = goodSamplesGenes(datExpr0[-1], verbose = 3);
+nSets = 2;
+#descriptive names
+setLabels = c("df1", "df2")
+shortLabels = c("df1", "df2")
+
+#create multiset expression data
+multiExpr = vector(mode = "list", length = nSets)
+
+multiExpr[[1]] = list(data = as.data.frame(t(df1)));
+names(multiExpr[[1]]$data) = df1$species;
+rownames(multiExpr[[1]]$data) = names(df1);
+multiExpr[[2]] = list(data = as.data.frame(t(df2)));
+names(multiExpr[[2]]$data) = df2$species;
+rownames(multiExpr[[2]]$data) = names(df2);
+
+#check that the multiExpr data format
+exprSize = checkSets(multiExpr)
+
+#check for excessive missing values.
+gsg = goodSamplesGenesMS(multiExpr, verbose = 3);
 gsg$allOK
 
-#Cluster samples to check for outlier samples
-#If sample removal necessary...
+if (!gsg$allOK)
+{
+  #print removed species:
+  if (sum(!gsg$goodGenes) > 0)
+    printFlush(paste("Removing species:", paste(names(multiExpr[[1]]$data)[!gsg$goodGenes], 
+                                              collapse = ", ")))
+  for (set in 1:exprSize$nSets)
+  {
+    if (sum(!gsg$goodSamples[[set]]))
+      printFlush(paste("In set", setLabels[set], "removing samples",
+                       paste(rownames(multiExpr[[set]]$data)[!gsg$goodSamples[[set]]], collapse = ", ")))
+#remove low species
+    multiExpr[[set]]$data = multiExpr[[set]]$data[gsg$goodSamples[[set]], gsg$goodGenes];
+  }
+#update exprSize
+  exprSize = checkSets(multiExpr)
+}
 
-#Read in clinical data
+#cluster samples
+sampleTrees = list()
+for (set in 1:nSets)
+{
+  sampleTrees[[set]] = hclust(dist(multiExpr[[set]]$data), method = "average")
+}
 
+#visualise clustered samples
+par(mfrow=c(2,1))
+par(mar = c(0, 4, 2, 0))
+for (set in 1:nSets)
+  plot(sampleTrees[[set]], main = paste("Sample clustering on all species in", setLabels[set]),
+       xlab="", sub="", cex = 0.7);
+#############################################################################################
+#If sample outlier removal is necessary:
+# Choose the cut height for e.g.df1
+#baseHeight = 20
 
+# Adjust cut height
+#cutHeights = c(20, 20*exprSize$nSamples[2]/exprSize$nSamples[1]);
 
+# Plot  dendrogram with cut lines
+#par(mar = c(0, 4, 2, 0))
+#for (set in 1:nSets)
+#{
+#  plot(sampleTrees[[set]], main = paste("Sample clustering on all species in", setLabels[set]),
+#       xlab="", sub="", cex = 0.8);
+#  abline(h=cutHeights[set], col = "blue")
+#}
 
+#Remove outlier sample
+#for (set in 1:nSets)
+#{
+#  labels = cutreeStatic(sampleTrees[[set]], cutHeight = cutHeights[set])
+#  keep = (labels==1)
+#  multiExpr[[set]]$data = multiExpr[[set]]$data[keep, ]
+#}
+#collectGarbage();
 
+#exprSize = checkSets(multiExpr)
+#exprSize
 
+collectGarbage();
+#############################################################################################
 
+#load metadata 
+metaData = read.csv("metadat.csv");
+
+#check metadata and dataframe sample names match
+dim(metaData)
+names(metaData)
+metaData$sample_id
+
+# Form a multi-set to contain metadata
+mtraits = vector(mode="list", length = nSets)
+for (set in 1:nSets)
+{
+  setSamples = rownames(multiExpr[[set]]$data)
+  mtraitsRows = match(setSamples, metaData$sample_id)
+  mtraits[[set]] = list(data = metaData[mtraitsRows, -1])
+  rownames(metaData[[set]]$data) = metaData[mtraitsRows, 1]
+}
+collectGarbage()
+
+nGenes = exprSize$nGenes
+nSamples = exprSize$nSamples
+
+#one-step network construciton and module detection
+#select soft-thresholding powers - ideally >0.8
+powers = c(seq(4,10,by=1), seq(12,20, by=2));
+powerTables = vector(mode = "list", length = nSets);
+
+#call network topology analysis function for each set
+for (set in 1:nSets)
+  powerTables[[set]] = list(data = pickSoftThreshold(multiExpr[[set]]$data, powerVector=powers,
+                                                     verbose = 2)[[2]]);
+collectGarbage();
+
+#plot
+colors = c("black", "blue")
+plotCols = c(2,5,6,7)
+colNames = c("Scale Free Topology Model Fit", "Mean connectivity", "Median connectivity",
+             "Max connectivity");
+ylim = matrix(NA, nrow = 2, ncol = 4);
+for (set in 1:nSets)
+{
+  for (col in 1:length(plotCols))
+  {
+    ylim[1, col] = min(ylim[1, col], powerTables[[set]]$data[, plotCols[col]], na.rm = TRUE);
+    ylim[2, col] = max(ylim[2, col], powerTables[[set]]$data[, plotCols[col]], na.rm = TRUE);
+  }
+}
+
+#plot the quantities in the specified columns against soft thresholding power
+sizeGrWindow(8, 6)
+par(mfcol = c(2,2));
+par(mar = c(4.2, 4.2 , 2.2, 0.5))
+cex1 = 0.7;
+for (col in 1:length(plotCols)) for (set in 1:nSets)
+{
+  if (set==1)
+  {
+    plot(powerTables[[set]]$data[,1], -sign(powerTables[[set]]$data[,3])*powerTables[[set]]$data[,2],
+         xlab="Soft Threshold (power)",ylab=colNames[col],type="n", ylim = ylim[, col],
+         main = colNames[col]);
+    addGrid();
+  }
+  if (col==1)
+  {
+    text(powerTables[[set]]$data[,1], -sign(powerTables[[set]]$data[,3])*powerTables[[set]]$data[,2],
+         labels=powers,cex=cex1,col=colors[set]);
+  } else
+    text(powerTables[[set]]$data[,1], powerTables[[set]]$data[,plotCols[col]],
+         labels=powers,cex=cex1,col=colors[set]);
+  if (col==1)
+  {
+    legend("bottomright", legend = setLabels, col = colors, pch = 20) ;
+  } else
+    legend("topright", legend = setLabels, col = colors, pch = 20) ;
+}
+
+net = blockwiseConsensusModules(
+  multiExpr, power = 4, minModuleSize = 10, deepSplit = 2,
+  networkType = "signed", 
+  TOMType = "signed",
+  saveIndividualTOMs = TRUE,
+  individualTOMFileNames = "individualTOM-Set%s-Block%b.RData",
+  saveConsensusTOMs = TRUE,
+  consensusTOMFilePattern = "consensusTOM-block.%b.RData",
+  pamRespectsDendro = FALSE, 
+  mergeCutHeight = 0.25, numericLabels = TRUE,
+  minKMEtoStay = 0,
+  saveTOMs = TRUE, verbose = 5)
+
+consMEs = net$multiMEs;
+moduleLabels = net$colors;
+#convert the numeric labels to color labels
+moduleColors = labels2colors(moduleLabels)
+consTree = net$dendrograms[[1]]; 
+
+sizeGrWindow(8,6);
+plotDendroAndColors(consTree, moduleColors,
+                    "Module colors",
+                    dendroLabels = FALSE, hang = 0.03,
+                    addGuide = TRUE, guideHang = 0.05,
+                    main = "Consensus gene dendrogram and module colors")
+
+#module-metadata correlations
+
+moduleTraitCor = list();
+moduleTraitPvalue = list();
+
+#calculate the correlations
+for (set in 1:nSets)
+{
+  moduleTraitCor[[set]] = cor(consMEs[[set]]$data, metaData[[set]]$data, use = "p")
+  moduleTraitPvalue[[set]] = corPvalueFisher(moduleTraitCor[[set]], exprSize$nSamples[set])
+}
+
+#convert numerical lables to colors for modules
+MEColors = labels2colors(as.numeric(substring(names(consMEs[[1]]$data), 3)))
+MEColorNames = paste("ME", MEColors, sep="")
+
+sizeGrWindow(10,7)
+#plot the module-metaData relationship table for df1
+
+set = 1
+textMatrix =  paste(signif(moduleTraitCor[[set]], 2), "\n(",
+                    signif(moduleTraitPvalue[[set]], 1), ")", sep = "");
+dim(textMatrix) = dim(moduleTraitCor[[set]])
+par(mar = c(6, 8.8, 3, 2.2));
+labeledHeatmap(Matrix = moduleTraitCor[[set]],
+               xLabels = names(metaData[[set]]$data),
+               yLabels = MEColorNames,
+               ySymbols = MEColorNames,
+               colorLabels = FALSE,
+               colors = greenWhiteRed(50),
+               invertColors = TRUE,
+               textMatrix = textMatrix,
+               setStdMargins = FALSE,
+               cex.text = 0.8,
+               zlim = c(-1,1),
+               main = paste("Module--meta data relationships in", setLabels[set]))
+
+#plot the module-metaData relationship table for df2
+
+set = 2
+textMatrix =  paste(signif(moduleTraitCor[[set]], 2), "\n(",
+                    signif(moduleTraitPvalue[[set]], 1), ")", sep = "");
+dim(textMatrix) = dim(moduleTraitCor[[set]])
+sizeGrWindow(10,7)
+par(mar = c(6, 8.8, 3, 2.2));
+labeledHeatmap(Matrix = moduleTraitCor[[set]],
+               xLabels = names(Traits[[set]]$data),
+               yLabels = MEColorNames,
+               ySymbols = MEColorNames,
+               colorLabels = FALSE,
+               colors = greenWhiteRed(50),
+               invertColors = TRUE,
+               textMatrix = textMatrix,
+               setStdMargins = FALSE,
+               cex.text = 0.8,
+               zlim = c(-1,1),
+               main = paste("Module--meta data relationships in", setLabels[set]))
+
+#consensus correlations
+consensusCor = matrix(NA, nrow(moduleTraitCor[[1]]), ncol(moduleTraitCor[[1]]))
+consensusPvalue = matrix(NA, nrow(moduleTraitCor[[1]]), ncol(moduleTraitCor[[1]]))
+
+#consensus negative correlations
+negative = moduleTraitCor[[1]] < 0 & moduleTraitCor[[2]] < 0
+consensusCor[negative] = pmax(moduleTraitCor[[1]][negative], moduleTraitCor[[2]][negative])
+consensusPvalue[negative] = pmax(moduleTraitPvalue[[1]][negative], moduleTraitPvalue[[2]][negative])
+
+#consensus positive correlations
+positive = moduleTraitCor[[1]] > 0 & moduleTraitCor[[2]] > 0
+consensusCor[positive] = pmin(moduleTraitCor[[1]][positive], moduleTraitCor[[2]][positive])
+consensusPvalue[positive] = pmax(moduleTraitPvalue[[1]][positive], moduleTraitPvalue[[2]][positive])
+
+textMatrix =  paste(signif(consensusCor, 2), "\n(",
+                    signif(consensusPvalue, 1), ")", sep = "")
+dim(textMatrix) = dim(moduleTraitCor[[set]])
+sizeGrWindow(10,7)
+par(mar = c(6, 8.8, 3, 2.2));
+labeledHeatmap(Matrix = consensusCor,
+               xLabels = names(metaData[[set]]$data),
+               yLabels = MEColorNames,
+               ySymbols = MEColorNames,
+               colorLabels = FALSE,
+               colors = greenWhiteRed(50),
+               invertColors = TRUE,
+               textMatrix = textMatrix,
+               setStdMargins = FALSE,
+               cex.text = 0.8,
+               zlim = c(-1,1),
+               main = paste("Consensus module--meta data relationships across\n",
+                            paste(setLabels, collapse = " and ")))
+
+##################################################################################
+#results dataframe including kME module memberships and species (gene) significances (GS)
+
+file = gzfile(description = "species_descript.csv.gz")
+annot = read.csv(file = file)
+
+#match data IDs to IDs in the annotation file
+probes = names(multiExpr[[1]]$data)
+probes2annot = match(probes, annot$sp_id)
+
+consMEs.unord = multiSetMEs(multiExpr, universalColors = moduleLabels, excludeGrey = TRUE)
+GS = list()
+kME = list()
+for (set in 1:nSets)
+{
+  GS[[set]] = corAndPvalue(multiExpr[[set]]$data, metaData[[set]]$data)
+  kME[[set]] = corAndPvalue(multiExpr[[set]]$data, consMEs.unord[[set]]$data)
+}
+
+GS.metaZ = (GS[[1]]$Z + GS[[2]]$Z)/sqrt(2)
+kME.metaZ = (kME[[1]]$Z + kME[[2]]$Z)/sqrt(2)
+GS.metaP = 2*pnorm(abs(GS.metaZ), lower.tail = FALSE)
+kME.metaP = 2*pnorm(abs(kME.metaZ), lower.tail = FALSE)
+
+GSmat = rbind(GS[[1]]$cor, GS[[2]]$cor, GS[[1]]$p, GS[[2]]$p, GS.metaZ, GS.metaP)
+nmetaData = checkSets(metaData)$nGenes
+metaDataNames = colnames(metaData[[1]]$data)
+dim(GSmat) = c(nGenes, 6*nmetaData)
+rownames(GSmat) = probes;
+colnames(GSmat) = spaste(
+    c("GS.set1.", "GS.set2.", "p.GS.set1.", "p.GS.set2.", "Z.GS.meta.", "p.GS.meta"),
+    rep(traitNames, rep(6, nTraits)))
+
+kMEmat = rbind(kME[[1]]$cor, kME[[2]]$cor, kME[[1]]$p, kME[[2]]$p, kME.metaZ, kME.metaP);
+MEnames = colnames(consMEs.unord[[1]]$data);
+nMEs = checkSets(consMEs.unord)$nGenes
+dim(kMEmat) = c(nGenes, 6*nMEs)
+rownames(kMEmat) = probes;
+colnames(kMEmat) = spaste(
+    c("kME.set1.", "kME.set2.", "p.kME.set1.", "p.kME.set2.", "Z.kME.meta.", "p.kME.meta"),
+    rep(MEnames, rep(6, nMEs)))
+
+info = data.frame(Probe = probes,
+                  ModuleLabel = moduleLabels,
+                  ModuleColor = labels2colors(moduleLabels),
+                  GSmat,
+                  kMEmat);
+write.csv(info, file = "consensus_res.csv", row.names = FALSE, quote = FALSE);
+#################################################################################################
+#R version 4.3.3 (2024-02-29 ucrt) -- "Angel Food Cake"
+#Copyright (C) 2024 The R Foundation for Statistical Computing
+#Platform: x86_64-w64-mingw32/x64 (64-bit)

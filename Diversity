@@ -1,0 +1,48 @@
+#OM-COG study diversity analysis using R Vegan
+#https://cran.r-project.org/web/packages/vegan/vegan.pdf
+
+setwd("dir...")
+
+#load vegan
+library(vegan) #diversity analyses
+library(ggplot2) #plotting
+
+#Shannon
+shannon_Healthy <- diversity(Healthy, "shannon")
+shannon_MCI <- diversity(MCI, "shannon")
+
+#Chao
+chao_Healthy <- estimateR(Healthy)
+chao_MCI <- estimateR(MCI)
+
+###############################################
+#Make diversity boxplots 
+
+x1  = factor(df.Shannon$Condition, levels=c("Healthy", "MCI"))
+x2  = factor(df.Chao$Condition, levels=c("Healthy", "MCI"))
+
+# plot
+boxplot(Shannon ~ x1, data = df.Shannon, outpch = NA,
+        main ="Shannon diversity boxplots",
+        xlab = "p-value = x",
+        ylab="Shannon Diversity Index (H')",
+        #ylim = c(x, x),
+        cex.axis=1.5, cex.main=1.5, cex.lab=1.5, lwd = 3) 
+stripchart(Shannon ~ x1, data = df.Shannon,
+           vertical = TRUE, method = "jitter", 
+           pch = 16, col = "blue", 
+           add = TRUE)
+box(lwd=3)
+
+#Chao1
+boxplot(Chao1 ~ x2, data = df.Chao, outpch = NA,
+        main ="Chao1 diversity boxplots",
+        xlab = "p-value = x",
+        ylab="Chao1",
+        #ylim = c(x, x),
+        cex.axis=1.5, cex.main=1.5, cex.lab=1.5, lwd = 3) 
+stripchart(Chao1 ~ x1, data = df.Chao,
+           vertical = TRUE, method = "jitter", 
+           pch = 16, col = "blue", 
+           add = TRUE)
+box(lwd=3)

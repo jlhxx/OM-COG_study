@@ -1,4 +1,6 @@
 #WGCNA to build a concensus correlation network of OTUs
+#This code follows the tutorial on concensus network generation from Langfelder & Horvath (2008).
+#http://horvath.genetics.ucla.edu/html/CoexpressionNetwork/Rpackages/WGCNA/
 #Langfelder, P. and Horvath, S., 2008. WGCNA: an R package for weighted correlation network analysis. BMC bioinformatics, 9(1), p.559.
 
 #data preparation - data should be appropriately prepared for analysis, i.e. filtered and transformed.
